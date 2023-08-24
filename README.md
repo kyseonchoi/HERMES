@@ -20,7 +20,7 @@ HERMES is being developed in R Studio.
 ## Development status
 Beta. Use at your own risk.
 
-If you have any comments or questions, please don't hesitate to contact us.
+If you have any comments or questions, please don't hesitate to contact us (kyungseon.choi@khu.ac.kr).
 
 *Note: This README provides an overview of the HERMES package. For detailed implementation codes, examples, and documentation of R functions, please refer to the appropriate sections in the package documentation.*
 
