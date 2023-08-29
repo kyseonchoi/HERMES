@@ -23,13 +23,13 @@ Beta. Use at your own risk.
 ## Caution
 There is an error in the COST CONCEPT ID because the English and Korean names of the COST variables do not match in the database used. 
 The current variable is 
-cost concept id 31980: total medical cost 
-cost concept id 2000000040: total medical cost
-cost concept id 2000000041: reimbursement cot
-cost concept id 2000000042: non-reimbursement cost
-cost concept id 31991: out-of-pocket cost
-cost concept id 31974: medical cost covered by insurance
-cost concept id 31976: medical cost covered by employer
+*cost concept id 31980: total medical cost 
+*cost concept id 2000000040: total medical cost
+*cost concept id 2000000041: reimbursement cot
+*cost concept id 2000000042: non-reimbursement cost
+*cost concept id 31991: out-of-pocket cost
+*cost concept id 31974: medical cost covered by insurance
+*cost concept id 31976: medical cost covered by employer
 
 If you have any comments or questions, please don't hesitate to contact us (kyungseon.choi@khu.ac.kr).
 
