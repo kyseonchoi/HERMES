@@ -1,0 +1,248 @@
+avg_obs <- function(data, indices)
+{
+  d <- data[indices,]
+  obs <- psych::describeBy(d$Total_cost, group=d$Dummytrt)
+  d_trt <- dplyr::filter(d, Dummytrt==1) 
+  d_con <- dplyr::filter(d, Dummytrt==0) 
+  meancost_trt <- mean(d_trt$Total_cost) 
+  meancost_con <- mean(d_con$Total_cost)
+  Difference <- meancost_trt-meancost_con
+  results <- list(obs,meancost_trt, meancost_con, Difference )
+  names(results) <- c("Summary", "Mean cost in treatment", "Mean cost in control", "Difference between treatment and control")
+  return(results)
+}
+
+cov_vif <- function(data, formula, indices)
+{
+  d <- data[indices,]
+  fit <- lm(formula, data=d)
+  results <- car::vif(fit)
+  return(results)
+}
+
+avg_ols <- function(data, formula, formula_retrans, indices)
+{
+  d <- data[indices,]
+  fit <- lm(formula, data=d)
+  d_trt <- dplyr::filter(d, Dummytrt==1) 
+  d_con <- dplyr::filter(d, Dummytrt==0) 
+  fit_trt<- lm(formula_retrans, data=d_trt)
+  fit_con<- lm(formula_retrans, data=d_con)
+  d_retransform <- mutate(d, 
+                          y_hat = fitted(fit),
+                          residual = residuals(fit),
+                          sigma = sigma(fit),
+                          sigmasquare = sigma(fit)*sigma(fit), 
+                          sigmasquare_trt = sigma(fit_trt)*sigma(fit_trt),
+                          sigmasquare_con = sigma(fit_con)*sigma(fit_con),
+                          expected_cost_homo_normal= exp(y_hat+0.5*sigmasquare),
+                          expected_cost_homo_notnormal= exp(y_hat)*mean(exp(residuals(fit))),
+                          expected_cost_hetero_normal= ifelse(Dummytrt == 1, 
+                                                              exp(y_hat+0.5*sigmasquare_trt),
+                                                              exp(y_hat+0.5*sigmasquare_con)),
+                          expected_cost_hetero_notnormal= ifelse(Dummytrt == 1,
+                                                                 exp(y_hat)*mean(exp(residuals(fit_trt))), 
+                                                                 exp(y_hat)*mean(exp(residuals(fit_con)))))
+  d_retransform_trt <- dplyr::filter(d_retransform, Dummytrt==1)
+  d_retransform_con <- dplyr::filter(d_retransform, Dummytrt==0)
+  d_white <- bptest(fit)
+  d_Norcheck <- ifelse(nrow(d)>=5000, ad.test(residuals(fit))$p.value, shapiro.test(residuals(fit))$p.value)
+  meancost_trt <- if (kurtosis(residuals(fit))<3) {
+    print("Consider GLM")
+  } else {
+    mean(if(d_white$p.value >= 0.05 & d_Norcheck >= 0.05) {
+      d_retransform_trt$expected_cost_homo_normal
+    } else if (d_white$p.value >= 0.05 & d_Norcheck < 0.05){
+      d_retransform_trt$expected_cost_homo_notnormal
+    } else if (d_white$p.value < 0.05 & d_Norcheck >= 0.05){
+      d_retransform_trt$expected_cost_hetero_normal
+    } else {
+      d_retransform_trt$expected_cost_hetero_notnormal  
+    })
+  }
+  meancost_con <- if (kurtosis(residuals(fit))<3) {
+    print("Consider GLM")
+  } else {
+    mean(if(d_white$p.value >= 0.05 & d_Norcheck >= 0.05) {
+      d_retransform_con$expected_cost_homo_normal
+    } else if (d_white$p.value >= 0.05 & d_Norcheck < 0.05){
+      d_retransform_con$expected_cost_homo_notnormal
+    } else if (d_white$p.value < 0.05 & d_Norcheck >= 0.05){
+      d_retransform_con$expected_cost_hetero_normal
+    } else {
+      d_retransform_con$expected_cost_hetero_notnormal  
+    })
+  }
+  Difference <- if (is.numeric(meancost_trt)) {
+    meancost_trt-meancost_con
+  } else {
+    "GLM needed"
+  }
+  results <- list(kurtosis(residuals(fit)), d_white,d_Norcheck, summary(fit), coef(fit),  AIC(fit), meancost_trt, meancost_con, Difference)
+  names(results) <- c("kurtosis","BP test", "Normality","Summary","Coef", "AIC","Mean cost in treatment", "Mean cost in control", "Difference between treatment and control")
+  return(results)
+}
+bootavg_ols_trt <- function(data, formula, formula_retrans, indices)
+{
+  d <- data[indices,]
+  fit <- lm(formula, data=d)
+  d_trt <- dplyr::filter(d, Dummytrt==1) 
+  d_con <- dplyr::filter(d, Dummytrt==0) 
+  fit_trt<- lm(formula_retrans, data=d_trt)
+  fit_con<- lm(formula_retrans, data=d_con)
+  d_retransform <- mutate(d, 
+                          y_hat = fitted(fit),
+                          residual = residuals(fit),
+                          sigma = sigma(fit),
+                          sigmasquare = sigma(fit)*sigma(fit), 
+                          sigmasquare_trt = sigma(fit_trt)*sigma(fit_trt),
+                          sigmasquare_con = sigma(fit_con)*sigma(fit_con),
+                          expected_cost_homo_normal= exp(y_hat+0.5*sigmasquare),
+                          expected_cost_homo_notnormal= exp(y_hat)*mean(exp(residuals(fit))),
+                          expected_cost_hetero_normal= ifelse(Dummytrt == 1, 
+                                                              exp(y_hat+0.5*sigmasquare_trt),
+                                                              exp(y_hat+0.5*sigmasquare_con)),
+                          expected_cost_hetero_notnormal= ifelse(Dummytrt == 1,
+                                                                 exp(y_hat)*mean(exp(residuals(fit_trt))), 
+                                                                 exp(y_hat)*mean(exp(residuals(fit_con)))))
+  d_retransform_trt <- dplyr::filter(d_retransform, Dummytrt==1)
+  d_retransform_con <- dplyr::filter(d_retransform, Dummytrt==0)
+  d_white <- bptest(fit)
+  d_white_p <- d_white$p.value
+  d_Norcheck <- ifelse(nrow(d)>=5000, ad.test(residuals(fit))$p.value, shapiro.test(residuals(fit))$p.value)
+  return(mean(if(d_white_p >= 0.05 & d_Norcheck >= 0.05) {
+    d_retransform_trt$expected_cost_homo_normal
+  } else if (d_white_p >= 0.05 & d_Norcheck < 0.05){
+    d_retransform_trt$expected_cost_homo_notnormal
+  } else if (d_white_p < 0.05 & d_Norcheck >= 0.05){
+    d_retransform_trt$expected_cost_hetero_normal
+  } else {
+    d_retransform_trt$expected_cost_hetero_notnormal  
+  }))
+}
+
+bootavg_ols_con <- function(data, formula, formula_retrans, indices)
+{
+  d <- data[indices,]
+  fit <- lm(formula, data=d)
+  d_trt <- dplyr::filter(d, Dummytrt==1) 
+  d_con <- dplyr::filter(d, Dummytrt==0) 
+  fit_trt<- lm(formula_retrans, data=d_trt)
+  fit_con<- lm(formula_retrans, data=d_con)
+  d_retransform <- mutate(d, 
+                          y_hat = fitted(fit),
+                          residual = residuals(fit),
+                          sigma = sigma(fit),
+                          sigmasquare = sigma(fit)*sigma(fit), 
+                          sigmasquare_trt = sigma(fit_trt)*sigma(fit_trt),
+                          sigmasquare_con = sigma(fit_con)*sigma(fit_con),
+                          expected_cost_homo_normal= exp(y_hat+0.5*sigmasquare),
+                          expected_cost_homo_notnormal= exp(y_hat)*mean(exp(residuals(fit))),
+                          expected_cost_hetero_normal= ifelse(Dummytrt == 1, 
+                                                              exp(y_hat+0.5*sigmasquare_trt),
+                                                              exp(y_hat+0.5*sigmasquare_con)),
+                          expected_cost_hetero_notnormal= ifelse(Dummytrt == 1,
+                                                                 exp(y_hat)*mean(exp(residuals(fit_trt))), 
+                                                                 exp(y_hat)*mean(exp(residuals(fit_con)))))
+  d_retransform_trt <- dplyr::filter(d_retransform, Dummytrt==1)
+  d_retransform_con <- dplyr::filter(d_retransform, Dummytrt==0)
+  d_white <- bptest(fit)
+  d_white_p <- d_white$p.value
+  d_Norcheck <- ifelse(nrow(d)>=5000, ad.test(residuals(fit))$p.value, shapiro.test(residuals(fit))$p.value)
+  return(mean(if(d_white_p >= 0.05 & d_Norcheck >= 0.05) {
+    d_retransform_con$expected_cost_homo_normal
+  } else if (d_white_p >= 0.05 & d_Norcheck < 0.05){
+    d_retransform_con$expected_cost_homo_notnormal
+  } else if (d_white_p < 0.05 & d_Norcheck >= 0.05){
+    d_retransform_con$expected_cost_hetero_normal
+  } else {
+    d_retransform_con$expected_cost_hetero_notnormal  
+  }))
+}
+
+recommend_avg_glm <- function(formula_OLS, data, indices)
+{
+  d <- data[indices,]
+  d_lambda <- powerTransform(d$Tot1_dollor)
+  d_Recommendation_link_function<- if(d_lambda$start < -0.5) {
+    'inverse'
+  } else if (d_lambda$start < 0.25) {
+    'log'
+  } else if (d_lambda$start < 0.75) {
+    'sqrt'
+  }  else if (d_lambda$start < 1.5) {
+    'identity'
+  }  else {
+    'square'
+  }
+  fit <- lm(formula_OLS, data=d)
+  d_Park_test <- mutate(d,
+                        y_hat= fitted(fit), 
+                        e= residuals(fit))
+  d_Park <- lm(log(e*e) ~ log(y_hat), data=d_Park_test)
+  d_Recommendation_family <- if(d_Park$coefficients["log(y_hat)"] < 0.5) {
+    gaussian
+  } else if (d_Park$coefficients["log(y_hat)"] < 1.5) {
+    poisson
+  } else if (d_Park$coefficients["log(y_hat)"] < 2.5) {
+    Gamma
+  }  else {inverse.gaussian
+  }
+  fit_glm <- glm2(formula_OLS, family=d_Recommendation_family(link=d_Recommendation_link_function), data=d, maxit=100)
+  d1 <- mutate(d, muhat=fitted(fit_glm))
+  d_trt <- dplyr::filter(d1, Dummytrt==1) 
+  d_con <- dplyr::filter(d1, Dummytrt==0) 
+  Difference <-  mean(d_trt$muhat)- mean(d_con$muhat)
+  results <- list(d_lambda$start, d_Recommendation_link_function, summary(d_Park), d_Recommendation_family(), summary(fit_glm), 
+                  AIC(fit_glm), mean(d_trt$muhat), mean(d_con$muhat), Difference)
+  names(results) <- c("lambda", "Link function", "park test", "Family","Summary", "AIC","Mean cost in treatment", "Mean cost in control", "Difference between treatment and control")
+  return(results)
+}
+
+avg_glm <-  function(formula, data, indices)
+{
+  d <- data[indices,]
+  fit_gamma <- glm2(formula, family=Gamma(link="log"), data=d, maxit=100)
+  fit_gaussian <- glm2(formula, family=gaussian(link="log"), data=d, maxit=100)
+  fit_poisson <- glm2(formula, family=poisson(link="log"), data=d, maxit=100)
+  d1 <- mutate(d, muhat_gaussian=fitted(fit_gaussian), muhat_poisson=fitted(fit_poisson), muhat_gamma=fitted(fit_gamma))
+  d_trt <- dplyr::filter(d1, Dummytrt==1) 
+  d_con <- dplyr::filter(d1, Dummytrt==0) 
+  Difference_gaussian <-  mean(d_trt$muhat_gaussian)- mean(d_con$muhat_gaussian)
+  Difference_poisson <-  mean(d_trt$muhat_poisson)- mean(d_con$muhat_poisson)
+  Difference_gamma <-  mean(d_trt$muhat_gamma)- mean(d_con$muhat_gamma)
+  Reset_gaussian <- resettest(fit_gaussian, power=2, type="fitted")
+  Reset_poisson <- resettest(fit_poisson, power=2, type="fitted")
+  Reset_gamma <- resettest(fit_gamma, power=2, type="fitted")
+  results <- list(summary(fit_gaussian), coef(fit_gaussian),AIC(fit_gaussian), mean(d_trt$muhat_gaussian), mean(d_con$muhat_gaussian), Difference_gaussian, Reset_gaussian,
+                  summary(fit_poisson),coef(fit_poisson),AIC(fit_poisson), mean(d_trt$muhat_poisson), mean(d_con$muhat_poisson), Difference_poisson, Reset_poisson,
+                  summary(fit_gamma),coef(fit_gamma), AIC(fit_gamma), mean(d_trt$muhat_gamma), mean(d_con$muhat_gamma), Difference_gamma, Reset_gamma)
+  names(results) <- c("Summary(gaussian)", "Coef(gaussian)","AIC(gaussian)", "Mean cost in treatment(gaussian)", "Mean cost in control(gaussian)", "Difference between treatment and control(gaussian)", "Reset test for gaussian",
+                      "Summary(poisson)", "Coef(poisson)", "AIC(poisson)", "Mean cost in treatment(poisson)", "Mean cost in control(poisson)", "Difference between treatment and control(poisson)", "Reset test for poisson",
+                      "Summary(gamma)", "Coef(gamma)", "AIC(gamma)", "Mean cost in treatment(gamma)", "Mean cost in control(gamma)", "Difference between treatment and control(gamma)", "Reset test for gamma")
+  return(results)
+}
+
+bootavg_glm_trt <- function(formula, data, family, indices)
+{
+  d <- data[indices,]
+  fit <- glm2(formula, family=family, data=d, maxit=100)
+  d1 <- mutate(d, muhat=fitted(fit))
+  d_trt <- dplyr::filter(d1, Dummytrt==1) 
+  d_con <- dplyr::filter(d1, Dummytrt==0)
+  results <- mean(d_trt$muhat)
+  names(results) <- c("Boot cost in treatment")
+  return(results)
+}
+
+bootavg_glm_con <- function(formula, data, family, indices)
+{
+  d <- data[indices,]
+  fit <- glm2(formula, family=family, data=d, maxit=100)
+  d1 <- mutate(d, muhat=fitted(fit))
+  d_trt <- dplyr::filter(d1, Dummytrt==1) 
+  d_con <- dplyr::filter(d1, Dummytrt==0)
+  results <- mean(d_con$muhat)
+  names(results) <- c("Boot cost in control")
+  return(results)
+}
